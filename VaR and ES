@@ -1,0 +1,79 @@
+---
+title: "R Notebook"
+output: pdf_document
+---
+
+```{r}
+if (!require("quantmod")) install.packages("quantmod")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("stats")) install.packages("stats")
+if (!require("tsDyn")) install.packages("tsDyn")
+if (!require("forecast")) install.packages("forecast")
+if (!require("urca")) install.packages("urca")
+if (!require("rugarch")) install.packages("rugarch")
+if (!require("rmgarch")) install.packages("rmgarch")
+if (!require("timetk")) install.packages("timetk")
+
+library(timetk)
+library(quantmod) # functions: getSymbols
+library(ggplot2)  # functions: ggplot
+library(stats)    # functions: arima
+library(tsDyn)    # functions: SETAR
+library(forecast) # functions: auto.arima, nnetar
+library(urca)
+library(rugarch) # functions: ugarchspec
+library(rmgarch) # functions: dccspec, dccfit, dccforecast
+```
+Question 1
+```{r}
+table <- getSymbols("DMRC", src="yahoo", return.class="xts", from="2021-01-01", auto.assign=F)
+str(table)
+```
+```{r}
+nasdaq <- table$DMRC.Close
+nasdaq <- na.omit(diff(log(nasdaq)))
+str(nasdaq)
+```
+Question 2
+```{r}
+model <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1, 1)),
+mean.model = list(armaOrder=c(1, 1)))
+model
+```
+```{r}
+model_fit <- ugarchfit(spec=model, data=nasdaq)
+```
+Question 3
+```{r}
+n.future <- 8
+model_forecast <- ugarchforecast(fit=model_fit, n.ahead=n.future)
+id <- tk_index(nasdaq)
+id.f <- tk_make_future_timeseries(id, length_out=n.future, inspect_weekdays=TRUE)
+```
+
+```{r}
+f_mean <- as.numeric(model_forecast@forecast$seriesFor)
+f_std <- as.numeric(model_forecast@forecast$sigmaFor)
+VaR_f <- abs(f_mean-2.33*f_std)
+VaR_f <- xts(VaR_f, order.by=id.f)
+colnames(VaR_f) <- "VaR"
+
+ggplot(data=VaR_f, aes(x=index(VaR_f), y=VaR)) +
+  geom_line(color="deeppink4") +
+  geom_point(color="deeppink4") +
+  labs(x="Date", y="", title="Forecast of Value at Risk for a $1 position in HDSN") +
+  theme_minimal() +
+  theme(plot.title = element_text(size=10))
+
+```
+```{r}
+ES <- abs(f_mean-2.64*f_std)
+ES <- xts(ES, order.by=id.f)
+colnames(ES) <- "es"
+ggplot(data=ES, aes(x=index(ES), y=es)) +
+  geom_line(color="springgreen4") +
+  geom_point(color="springgreen4") +
+  labs(x="Date", y="", title="Expected Shortfall for a $1 position in HDSN") +
+  theme_minimal() +
+  theme(plot.title = element_text(size=10))
+```
